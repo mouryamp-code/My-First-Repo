@@ -1,0 +1,118 @@
+name: jobs-a
+
+on:
+  schedule:
+    # Job 1: Computech Store, once a day (12:00 AM UTC = 5:30 AM IST). Full catalog, ~20 min.
+    # (Amazon runs separately in amazon.yml)
+    - cron: "0 0 * * *"
+    
+    # Job 2: Vedant Computers + EliteHubs (1:00 AM, 9:00 AM, 5:00 PM UTC)
+    - cron: "0 1,9,17 * * *"
+    
+    # Job 3: MD Computers + Flipkart (3:00 AM, 11:00 AM, 7:00 PM UTC)
+    - cron: "0 3,11,19 * * *"
+
+    # Job 4: PrimeABGB + PC Studio (5:00 AM, 1:00 PM, 9:00 PM UTC)
+    - cron: "0 5,13,21 * * *"
+
+    # Job 6: SCL Gaming, once a day (2:00 AM UTC = 7:30 AM IST). Full catalog, ~25 min.
+    - cron: "0 2 * * *"
+
+    # Job 5: TPS Technologies + Vishal Peripherals (6:30 AM, 2:30 PM, 10:30 PM UTC)
+    - cron: "30 6,14,22 * * *"
+    
+  workflow_dispatch:
+
+# Least privilege: these jobs only read the repo.
+permissions:
+  contents: read
+
+jobs:
+  run-staggered-scraper:
+    # Explicitly using 24.04 avoids structural breaking changes on the runner platform
+    # Off until the repository variable SCRAPERS_ENABLED is set to true.
+    if: vars.SCRAPERS_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    # Hard stop so a stuck run (Cloudflare loop, hung browser) can't run forever.
+    timeout-minutes: 360
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      NEXT_PUBLIC_SITE_URL: ${{ secrets.NEXT_PUBLIC_SITE_URL }}
+      REVALIDATE_SECRET: ${{ secrets.REVALIDATE_SECRET }}
+      SCRAPE_MIN_DELAY: "2"
+      SCRAPE_MAX_DELAY: "5"
+      CUELINKS_API_KEY: ${{ secrets.CUELINKS_API_KEY }}
+      VEDANT_COMPUTERS_TRACKING_ID: ${{ secrets.VEDANT_COMPUTERS_TRACKING_ID }}
+      COMPUTECH_REFERRAL_CODE: ${{ secrets.COMPUTECH_REFERRAL_CODE }}
+      FLIPKART_AFFILIATE_ID: ${{ secrets.FLIPKART_AFFILIATE_ID }}
+      FLIPKART_AFFILIATE_TOKEN: ${{ secrets.FLIPKART_AFFILIATE_TOKEN }}
+
+    steps:
+      - name: Check that every secret is set
+        run: |
+          for v in DATABASE_URL DIRECT_URL NEXT_PUBLIC_SITE_URL REVALIDATE_SECRET CUELINKS_API_KEY VEDANT_COMPUTERS_TRACKING_ID COMPUTECH_REFERRAL_CODE; do
+            [ -n "${!v}" ] || { echo "Missing secret: $v"; exit 1; }
+          done
+
+      - name: Checkout repository code
+        uses: actions/checkout@v5
+
+      - name: Set up Astral uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          # FIXED: Explicitly sets the cache manager target directory
+          cache-dependency-glob: "first-file/scraper/uv.lock"
+
+      - name: Set up Python Environment
+        run: |
+          cd first-file/scraper
+          uv python install 3.12.7
+          uv sync
+
+      - name: Install Playwright and System Dependencies
+        run: |
+          cd first-file/scraper
+          uv run playwright install --with-deps chromium
+
+      - name: Execute Staggered Target Logic
+        run: |
+          cd first-file/scraper
+          TRIGGER_EVENT="${{ github.event.schedule }}"
+          
+          # Random 0-7 min start so runs never hit the stores at the exact same minute (looks less
+          # like a bot to Cloudflare). Manual runs start right away.
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            python -c "import time, random; delay = random.randint(0, 420); print(f'Sleeping for {delay} seconds...'); time.sleep(delay)"
+          fi
+          
+          if [ "$TRIGGER_EVENT" = "0 0 * * *" ]; then
+            echo "🚀 Executing Job 1 Target Block: Computech"
+            uv run pcforge-scrape run --retailer computech
+            
+          elif [ "$TRIGGER_EVENT" = "0 1,9,17 * * *" ]; then
+            echo "🚀 Executing Job 2 Target Block: Vedant + EliteHubs"
+            uv run pcforge-scrape run --retailer vedant --retailer elitehubs
+            
+          elif [ "$TRIGGER_EVENT" = "0 3,11,19 * * *" ]; then
+            echo "🚀 Executing Job 3 Target Block: MD Computers + Flipkart"
+            uv run pcforge-scrape run --retailer mdcomputers --retailer flipkart
+            
+          elif [ "$TRIGGER_EVENT" = "0 5,13,21 * * *" ]; then
+            echo "🚀 Executing Job 4 Target Block: PrimeABGB + PC Studio"
+            uv run pcforge-scrape run --retailer primeabgb --retailer pcstudio
+
+          elif [ "$TRIGGER_EVENT" = "0 2 * * *" ]; then
+            echo "🚀 Executing Job 6 Target Block: SCL Gaming (daily)"
+            uv run pcforge-scrape run --retailer sclgaming
+
+          elif [ "$TRIGGER_EVENT" = "30 6,14,22 * * *" ]; then
+            echo "🚀 Executing Job 5 Target Block: TPS Technologies + Vishal Peripherals"
+            uv run pcforge-scrape run --retailer tpstech --retailer vishal
+
+          else
+            echo "🔘 Manual dispatch: all scraped stores (Amazon has its own workflow)"
+            uv run pcforge-scrape run --retailer vedant --retailer elitehubs --retailer mdcomputers --retailer computech --retailer flipkart --retailer primeabgb --retailer pcstudio --retailer sclgaming --retailer tpstech --retailer vishal
+          fi

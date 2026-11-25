@@ -1,0 +1,354 @@
+# Per-store, per-category listing quotas and popular-model seeds.
+# Listings matching a seed are picked first (to maximise cross-store overlap); the rest of the
+# quota is filled in the store's own order. JSON-feed stores (Shopify / WooCommerce Store API)
+# return 100-250 products per request, so these quotas cost only a few requests per category.
+
+quotas:
+  cpu: 60
+  gpu: 150
+  motherboard: 120
+  ram: 80
+  psu: 60
+  case: 80
+
+expanded_quotas:
+  ssd: 60
+  hdd: 30
+  cooler: 60
+  monitor: 60
+  fan: 30
+  keyboard: 80
+  mouse: 80
+  headset: 60
+  controller: 30
+
+seeds:
+  cpu:
+    - "ryzen 5 5600"
+    - "ryzen 5 7600"
+    - "ryzen 5 7600x"
+    - "ryzen 7 7700x"
+    - "ryzen 7 7800x3d"
+    - "ryzen 7 9800x3d"
+    - "core i5 12400f"
+    - "core i5 13400f"
+    - "core i5 14400f"
+    - "core i7 14700k"
+
+  gpu:
+    - "rtx 3060"
+    - "rtx 4060"
+    - "rtx 4060 ti"
+    - "rtx 4070"
+    - "rtx 4070 super"
+    - "rtx 4070 ti super"
+    - "rtx 4080 super"
+    - "rx 6600"
+    - "rx 7600"
+    - "rx 7700 xt"
+    - "rx 7800 xt"
+    - "rx 7900 gre"
+
+  motherboard:
+    - "b550m"
+    - "b650m"
+    - "b650"
+    - "x670e"
+    - "b760m"
+    - "b760"
+    - "z790"
+    - "h610m"
+
+  ram:
+    - "16gb ddr4 3200"
+    - "16gb ddr5 5600"
+    - "16gb ddr5 6000"
+    - "32gb ddr5 6000"
+    - "2x16gb ddr5 6000"
+    - "vengeance"
+    - "trident z5"
+    - "fury beast"
+
+  psu:
+    - "550w"
+    - "650w"
+    - "750w"
+    - "850w"
+    - "rm750e"
+    - "rm850e"
+    - "cv650"
+    - "mwe 650"
+    - "mag a650bn"
+    - "mag a750gl"
+
+  case:
+    - "lancool 216"
+    - "4000d airflow"
+    - "h5 flow"
+    - "h6 flow"
+    - "ch370"
+    - "cc560"
+    - "td500 mesh"
+    - "o11 vision"
+
+  ssd:
+    - "sn850x"
+    - "sn770"
+    - "sn580"
+    - "990 pro"
+    - "980 pro"
+    - "p3 plus"
+    - "t500"
+    - "kc3000"
+    - "nv2"
+    - "nv3"
+
+  hdd:
+    - "barracuda 1tb"
+    - "barracuda 2tb"
+    - "ironwolf 4tb"
+    - "wd blue 1tb"
+    - "wd blue 2tb"
+    - "skyhawk"
+    - "p300"
+
+  cooler:
+    - "ak400"
+    - "ak620"
+    - "ag400"
+    - "le520"
+    - "le720"
+    - "ls720"
+    - "hyper 212"
+    - "masterliquid 240l"
+    - "masterliquid 360l"
+    - "liquid freezer iii"
+
+  monitor:
+    - "24gn65r"
+    - "27gp850"
+    - "27gr75q"
+    - "g2412"
+    - "g274qpf"
+    - "vg249q3a"
+    - "gs27q"
+    - "xv272u"
+    - "odyssey g4"
+
+  fan:
+    - "p12 pwm pst"
+    - "p12 max"
+    - "fc120"
+    - "rf120"
+    - "sickleflow 120"
+    - "uni fan sl"
+    - "rs120"
+
+  keyboard:
+    - "k552"
+    - "k70"
+    - "k65"
+    - "g213"
+    - "g413"
+    - "g915"
+    - "g pro x"
+    - "huntsman"
+    - "blackwidow"
+    - "alloy origins"
+    - "apex pro"
+    - "keychron k"
+    - "rk61"
+    - "rk84"
+    - "mk1400"
+    - "aula f75"
+
+  mouse:
+    - "g502"
+    - "g102"
+    - "g304"
+    - "g pro x superlight"
+    - "deathadder"
+    - "viper"
+    - "basilisk"
+    - "pulsefire"
+    - "rival 3"
+    - "aerox"
+    - "m65"
+    - "harpoon"
+    - "sc620"
+    - "m711"
+
+  headset:
+    - "cloud ii"
+    - "cloud iii"
+    - "cloud stinger"
+    - "arctis nova"
+    - "blackshark"
+    - "kraken"
+    - "g435"
+    - "g733"
+    - "g pro x"
+    - "hs80"
+    - "void"
+    - "h510"
+
+  controller:
+    - "dualsense"
+    - "xbox wireless"
+    - "xbox elite"
+    - "8bitdo"
+    - "gamesir"
+    - "cosmic byte"
+    - "evofox"
+# ---------------------------------------------------------------------------------------------
+# Amazon only (Creators API sync, see .github/workflows/amazon-*.yml). Bigger quotas than the
+# store scrapers, plus brand + category search terms chosen from the brands that fill our catalog,
+# so Amazon results match products we already list. Each search term returns 10 results per page;
+# the peripherals run reads 3 pages, the PC parts run 2. Budget: ~3,000 API requests/day.
+amazon_quotas:
+  cpu: 200
+  gpu: 400
+  motherboard: 400
+  ram: 300
+  psu: 200
+  case: 250
+  ssd: 300
+  hdd: 120
+  cooler: 200
+  monitor: 300
+  fan: 120
+  keyboard: 300
+  mouse: 300
+  headset: 250
+  controller: 150
+
+amazon_seeds:
+  cpu:
+    - "amd ryzen processor"
+    - "intel core processor"
+    - "ryzen 9 9950x"
+    - "core ultra 7 265k"
+    - "core i3 12100f"
+  gpu:
+    - "msi geforce rtx 5060"
+    - "asus geforce rtx 5070"
+    - "gigabyte geforce rtx 5060 ti"
+    - "zotac geforce rtx"
+    - "inno3d geforce rtx"
+    - "galax geforce rtx"
+    - "sapphire radeon rx 9060 xt"
+    - "asrock radeon rx"
+    - "colorful geforce rtx"
+  motherboard:
+    - "gigabyte b650 motherboard"
+    - "msi b650 motherboard"
+    - "asus b760 motherboard"
+    - "asrock b550 motherboard"
+    - "gigabyte b860 motherboard"
+    - "msi x870 motherboard"
+    - "asus h610 motherboard"
+  ram:
+    - "xpg lancer ddr5"
+    - "corsair vengeance ddr5"
+    - "g.skill ripjaws ddr5"
+    - "teamgroup t-force ddr5"
+    - "kingston fury ddr4"
+    - "crucial ddr5 desktop memory"
+  psu:
+    - "corsair power supply"
+    - "cooler master power supply"
+    - "antec power supply"
+    - "deepcool power supply"
+    - "thermaltake smps"
+    - "ant esports power supply"
+  case:
+    - "ant esports cabinet"
+    - "thermaltake cabinet"
+    - "corsair airflow case"
+    - "cooler master cabinet"
+    - "deepcool cabinet"
+    - "lian li cabinet"
+    - "nzxt h5"
+  ssd:
+    - "xpg nvme ssd"
+    - "wd black nvme"
+    - "samsung nvme ssd"
+    - "crucial nvme ssd"
+    - "kingston nvme ssd"
+    - "evm nvme ssd"
+    - "lexar nvme ssd"
+  hdd:
+    - "seagate internal hard drive"
+    - "western digital internal hard drive"
+    - "toshiba internal hard drive"
+  cooler:
+    - "deepcool cpu cooler"
+    - "cooler master cpu cooler"
+    - "arctic liquid freezer"
+    - "noctua cpu cooler"
+    - "ant esports cpu cooler"
+    - "thermaltake aio liquid cooler"
+  monitor:
+    - "samsung gaming monitor"
+    - "lg ultragear monitor"
+    - "msi gaming monitor"
+    - "benq gaming monitor"
+    - "dell gaming monitor"
+    - "asus tuf gaming monitor"
+    - "acer nitro monitor"
+    - "aoc gaming monitor"
+    - "viewsonic gaming monitor"
+    - "lenovo legion monitor"
+  fan:
+    - "lian li uni fan"
+    - "arctic p12"
+    - "noctua case fan"
+    - "corsair rgb case fan"
+    - "deepcool case fan"
+    - "ant esports case fan"
+  keyboard:
+    - "aula mechanical keyboard"
+    - "redragon mechanical keyboard"
+    - "razer gaming keyboard"
+    - "ant esports gaming keyboard"
+    - "logitech gaming keyboard"
+    - "cosmic byte keyboard"
+    - "asus rog keyboard"
+    - "royal kludge keyboard"
+    - "hyperx alloy keyboard"
+    - "keychron mechanical keyboard"
+    - "cybeart keyboard"
+    - "evofox gaming keyboard"
+  mouse:
+    - "logitech gaming mouse"
+    - "razer gaming mouse"
+    - "asus rog mouse"
+    - "ant esports gaming mouse"
+    - "aula gaming mouse"
+    - "hyperx pulsefire"
+    - "zebronics gaming mouse"
+    - "cosmic byte gaming mouse"
+    - "redragon gaming mouse"
+    - "benq zowie mouse"
+    - "evofox gaming mouse"
+  headset:
+    - "boat gaming headphones"
+    - "jbl quantum"
+    - "sony inzone"
+    - "razer gaming headset"
+    - "logitech gaming headset"
+    - "hyperx cloud"
+    - "sennheiser gaming headset"
+    - "corsair gaming headset"
+    - "ant esports gaming headset"
+    - "cosmic byte headset"
+    - "zebronics gaming headphones"
+  controller:
+    - "thrustmaster"
+    - "cosmic byte controller"
+    - "ant esports controller"
+    - "razer controller"
+    - "sony dualsense"
+    - "logitech steering wheel"
+    - "amkette evofox controller"
+    - "xbox controller"

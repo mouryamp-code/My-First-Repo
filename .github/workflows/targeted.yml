@@ -1,0 +1,94 @@
+name: jobs-c
+
+# Searches Amazon by name for known products it isn't linked to yet. This is the most accurate way
+# to add Amazon offers (about 40% of lookups find a match). Every website store is crawled in full
+# by the main scraper. See scraper/pcforge_scraper/targeted.py.
+#
+#   07:10 UTC = 12:40 IST and 23:15 UTC = 04:45 IST, 700 products each (~1,400 requests/day).
+# Both slots sit in gaps between the store-scraper jobs and the Amazon syncs (amazon.yml), and share
+# the "amazon-creators-api" queue with them so two jobs never call the Amazon API at the same time.
+
+on:
+  schedule:
+    - cron: "10 7 * * *"
+    - cron: "15 23 * * *"
+  workflow_dispatch:
+    inputs:
+      budget:
+        description: "Max products to look up on Amazon (blank = 700)"
+        required: false
+        default: ""
+      dry_run:
+        description: "Search and report only, write nothing"
+        type: boolean
+        default: false
+
+concurrency:
+  group: amazon-creators-api
+  cancel-in-progress: false
+
+# Least privilege: these jobs only read the repo.
+permissions:
+  contents: read
+
+jobs:
+  targeted-lookup:
+    # Off until the repository variable SCRAPERS_ENABLED is set to true.
+    if: vars.SCRAPERS_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      NEXT_PUBLIC_SITE_URL: ${{ secrets.NEXT_PUBLIC_SITE_URL }}
+      REVALIDATE_SECRET: ${{ secrets.REVALIDATE_SECRET }}
+      SCRAPE_MIN_DELAY: "2"
+      SCRAPE_MAX_DELAY: "5"
+      CUELINKS_API_KEY: ${{ secrets.CUELINKS_API_KEY }}
+      VEDANT_COMPUTERS_TRACKING_ID: ${{ secrets.VEDANT_COMPUTERS_TRACKING_ID }}
+      AMAZON_CREATORS_CLIENT_ID: ${{ secrets.AMAZON_CREATORS_CLIENT_ID }}
+      AMAZON_CREATORS_CLIENT_SECRET: ${{ secrets.AMAZON_CREATORS_CLIENT_SECRET }}
+      AMAZON_CREATORS_CREDENTIAL_VERSION: "3.2"
+      AMAZON_PARTNER_TAG: ${{ secrets.AMAZON_PARTNER_TAG }}
+      AMAZON_MARKETPLACE: "www.amazon.in"
+
+    steps:
+      - name: Check that every secret is set
+        run: |
+          for v in DATABASE_URL DIRECT_URL NEXT_PUBLIC_SITE_URL REVALIDATE_SECRET AMAZON_CREATORS_CLIENT_ID AMAZON_CREATORS_CLIENT_SECRET AMAZON_PARTNER_TAG; do
+            [ -n "${!v}" ] || { echo "Missing secret: $v"; exit 1; }
+          done
+
+      - name: Checkout repository code
+        uses: actions/checkout@v5
+
+      - name: Set up Astral uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "first-file/scraper/uv.lock"
+
+      - name: Set up Python Environment
+        run: |
+          cd first-file/scraper
+          uv python install 3.12.7
+          uv sync
+
+      - name: Install Playwright (browser fallback if a store challenges)
+        run: |
+          cd first-file/scraper
+          uv run playwright install --with-deps chromium
+
+      - name: Run targeted lookup
+        # Inputs arrive as environment variables (never pasted into the script), and budget must be a number.
+        env:
+          INPUT_BUDGET: ${{ github.event.inputs.budget }}
+          INPUT_DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: |
+          cd first-file/scraper
+          BUDGET="${INPUT_BUDGET:-700}"
+          case "$BUDGET" in (*[!0-9]*) echo "budget must be a whole number"; exit 1;; esac
+          ARGS="--budget $BUDGET"
+          if [ "$INPUT_DRY_RUN" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          uv run pcforge-scrape targeted $ARGS

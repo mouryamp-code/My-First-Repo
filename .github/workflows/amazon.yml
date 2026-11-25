@@ -1,0 +1,119 @@
+name: jobs-b
+
+# Amazon is an official API (not a scraper), so it runs on its own schedule, split by category
+# group. Peripherals are usually cheapest on Amazon, so they get more searching; PC parts are
+# usually cheapest at the specialist stores, so their Amazon prices mainly need keeping fresh.
+#
+#   02:35 UTC  08:05 IST  Peripherals  find new products (3 pages per term) + refresh known
+#   08:10 UTC  13:40 IST  PC parts     find new products (2 pages per term) + refresh known
+#   12:30 UTC  18:00 IST  Peripherals  short find (1 page per term) + refresh known
+#   20:30 UTC  02:00 IST  PC parts     refresh known only (cheap: 10 products per request)
+#
+# Amazon prices are shown only while under 24 hours old (Amazon's rule; older ones become plain
+# links), so every group is refreshed twice a day. Slots sit in gaps between the store-scraper
+# jobs (scraper.yml). All Amazon jobs, including the name lookup (targeted.yml), share one queue
+# so they never call the API at the same time (it allows about 1 request per second).
+# Budget: ~1,200 requests/day here + ~1,400 in targeted.yml, about 35% of the daily cap.
+
+on:
+  schedule:
+    - cron: "35 2 * * *" # peripherals, morning
+    - cron: "10 8 * * *" # PC parts
+    - cron: "30 12 * * *" # peripherals, evening
+    - cron: "30 20 * * *" # PC parts, refresh only
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Which sync to run"
+        type: choice
+        default: peripherals-morning
+        options:
+          - peripherals-morning
+          - peripherals-evening
+          - parts
+          - parts-refresh
+
+concurrency:
+  group: amazon-creators-api
+  cancel-in-progress: false
+
+# Least privilege: these jobs only read the repo.
+permissions:
+  contents: read
+
+jobs:
+  amazon-sync:
+    # Off until the repository variable SCRAPERS_ENABLED is set to true.
+    if: vars.SCRAPERS_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      NEXT_PUBLIC_SITE_URL: ${{ secrets.NEXT_PUBLIC_SITE_URL }}
+      REVALIDATE_SECRET: ${{ secrets.REVALIDATE_SECRET }}
+      CUELINKS_API_KEY: ${{ secrets.CUELINKS_API_KEY }}
+      AMAZON_CREATORS_CLIENT_ID: ${{ secrets.AMAZON_CREATORS_CLIENT_ID }}
+      AMAZON_CREATORS_CLIENT_SECRET: ${{ secrets.AMAZON_CREATORS_CLIENT_SECRET }}
+      AMAZON_CREATORS_CREDENTIAL_VERSION: "3.2"
+      AMAZON_PARTNER_TAG: ${{ secrets.AMAZON_PARTNER_TAG }}
+      AMAZON_MARKETPLACE: "www.amazon.in"
+
+    steps:
+      - name: Check that every secret is set
+        run: |
+          for v in DATABASE_URL DIRECT_URL NEXT_PUBLIC_SITE_URL REVALIDATE_SECRET AMAZON_CREATORS_CLIENT_ID AMAZON_CREATORS_CLIENT_SECRET AMAZON_PARTNER_TAG; do
+            [ -n "${!v}" ] || { echo "Missing secret: $v"; exit 1; }
+          done
+
+      - name: Checkout repository code
+        uses: actions/checkout@v5
+
+      - name: Choose the sync for this time slot
+        id: mode
+        env:
+          SCHEDULE: ${{ github.event.schedule }}
+          INPUT_MODE: ${{ github.event.inputs.mode }}
+        run: |
+          case "$SCHEDULE" in
+            "35 2 * * *")  MODE=peripherals-morning ;;
+            "10 8 * * *")  MODE=parts ;;
+            "30 12 * * *") MODE=peripherals-evening ;;
+            "30 20 * * *") MODE=parts-refresh ;;
+            *)             MODE="${INPUT_MODE:-peripherals-morning}" ;;
+          esac
+          case "$MODE" in
+            peripherals-morning) GROUP=peripherals; SEARCH=true;  PAGES=3 ;;
+            peripherals-evening) GROUP=peripherals; SEARCH=true;  PAGES=1 ;;
+            parts)               GROUP=parts;       SEARCH=true;  PAGES=2 ;;
+            parts-refresh)       GROUP=parts;       SEARCH=false; PAGES=1 ;;
+            *) echo "Unknown mode: $MODE"; exit 1 ;;
+          esac
+          echo "Running $MODE: group=$GROUP search=$SEARCH pages=$PAGES"
+          {
+            echo "group=$GROUP"
+            echo "search=$SEARCH"
+            echo "pages=$PAGES"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up Astral uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "first-file/scraper/pyproject.toml"
+
+      - name: Set up Python environment
+        working-directory: first-file/scraper
+        run: |
+          uv python install 3.12.7
+          uv sync
+
+      - name: Sync Amazon listings
+        working-directory: first-file/scraper
+        env:
+          AMAZON_SEARCH: ${{ steps.mode.outputs.search }}
+          AMAZON_SEARCH_PAGES: ${{ steps.mode.outputs.pages }}
+          AMAZON_REFRESH_KNOWN: "true"
+          GROUP: ${{ steps.mode.outputs.group }}
+        run: uv run pcforge-scrape run --retailer amazon --group "$GROUP"
