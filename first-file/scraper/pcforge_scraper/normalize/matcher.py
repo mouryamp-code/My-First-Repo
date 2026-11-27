@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -18,6 +19,32 @@ from pcforge_scraper.normalize.keygen import (
 from pcforge_scraper.retailers.base import ScrapedListing
 
 MatchStatusLiteral = Literal["MATCHED", "REVIEW", "UNMATCHED"]
+
+#: A whole computer (prebuilt PC, laptop, mini PC...) lists its parts in the title, e.g.
+#: "Gaming PC, i5-12400F, 16GB DDR4 RAM, 512GB NVMe SSD, RTX 3050". Without this it can match
+#: the part it mentions and show a Rs 1.6 lakh PC as the price of a CPU.
+_SYSTEM_WORDS = re.compile(
+    r"\b(?:pre-?built|prebuild|gaming\s+(?:pc|desktop|computer|rig|tower)|desktop\s+(?:pc|computer)|"
+    r"(?:mini|tower|assembled|custom)\s+pc|all[\s-]*in[\s-]*one(?:\s+(?:pc|desktop))?|aio\s+(?:pc|desktop)|"
+    r"laptops?|notebooks?|barebones?|workstation\s+pc|pc\s+build|computer\s+(?:set|system)|"
+    r"cpu\s+(?:set|tower))\b",
+    re.IGNORECASE,
+)
+_SYSTEM_PARTS = {
+    "cpu": re.compile(r"\b(?:core\s+)?(?:i[3579]|ultra\s*[579])[-\s]?\d{3,5}|\bryzen\s*[3579]\b", re.IGNORECASE),
+    "gpu": re.compile(r"\b(?:rtx|gtx)\s*\d{3,4}|\brx\s*\d{4}|\barc\s+[ab]\d{3}\b", re.IGNORECASE),
+    "ram": re.compile(r"\b\d{1,3}\s*gb\b[^,|/]{0,20}\b(?:ddr\d|ram|memory)\b", re.IGNORECASE),
+    "storage": re.compile(r"\b\d{3,4}\s*gb\b[^,|/]{0,15}\b(?:ssd|nvme|hdd)\b|\b\d\s*tb\b[^,|/]{0,15}\b(?:ssd|nvme|hdd)\b", re.IGNORECASE),
+    "os": re.compile(r"\bwindows\s*1[01]\b|\bwin\s*1[01]\b", re.IGNORECASE),
+}
+#: Categories that are single components (a system is never one of these).
+_COMPONENT_CATEGORIES = frozenset({"cpu", "gpu", "motherboard", "ram", "psu", "case", "ssd", "hdd", "cooler", "fan"})
+
+
+def looks_like_complete_system(title: str) -> bool:
+    """True for a whole computer: system words plus two parts, or four different parts named."""
+    parts = sum(1 for pattern in _SYSTEM_PARTS.values() if pattern.search(title))
+    return parts >= 4 or (parts >= 2 and bool(_SYSTEM_WORDS.search(title)))
 MatchMethodLiteral = Literal["MPN", "KEY", "MANUAL"]
 
 
@@ -254,6 +281,18 @@ class ProductMatcher:
         )
         candidate_key = build_match_key(extraction)
         ram_sig = build_ram_base_signature(extraction)
+
+        # 0a. A whole computer is never the part it mentions.
+        if listing.category in _COMPONENT_CATEGORIES and looks_like_complete_system(listing.raw_title):
+            return MatchOutcome(
+                listing=listing,
+                extraction=extraction,
+                match_status="REVIEW",
+                match_method=None,
+                match_key_candidate=candidate_key,
+                match_notes="Complete system (prebuilt PC / laptop), not a single part",
+                product=None,
+            )
 
         # 0. Structured field / title conflict -> REVIEW
         if extraction.conflict_notes:
